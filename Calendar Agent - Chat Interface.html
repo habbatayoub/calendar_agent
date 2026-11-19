@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calendar Agent</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --border:    #21262d;
+    --muted:     #8b949e;
+    --text:      #e6edf3;
+    --accent:    #58a6ff;
+    --accent-dim:#1f3a5f;
+    --user-bg:   #1c2a3a;
+    --agent-bg:  #161b22;
+    --success:   #3fb950;
+    --danger:    #f85149;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* ── Layout ── */
+  .app {
+    display: grid;
+    grid-template-rows: 56px 1fr auto;
+    height: 100vh;
+    max-width: 780px;
+    margin: 0 auto;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 6px var(--success);
+    flex-shrink: 0;
+  }
+
+  .status-dot.offline {
+    background: var(--muted);
+    box-shadow: none;
+  }
+
+  header h1 {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--text);
+  }
+
+  header span {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 400;
+  }
+
+  .config-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .config-btn:hover {
+    color: var(--text);
+    border-color: var(--muted);
+  }
+
+  /* ── Config panel ── */
+  .config-panel {
+    display: none;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    gap: 12px;
+    flex-direction: column;
+  }
+
+  .config-panel.open { display: flex; }
+
+  .config-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .config-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    width: 90px;
+    flex-shrink: 0;
+    font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .config-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .config-input:focus { border-color: var(--accent); }
+
+  .config-save {
+    align-self: flex-end;
+    background: var(--accent);
+    color: #0d1117;
+    border: none;
+    padding: 7px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity 0.15s;
+  }
+
+  .config-save:hover { opacity: 0.85; }
+
+  /* ── Messages ── */
+  .messages {
+    overflow-y: auto;
+    padding: 24px 24px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    scroll-behavior: smooth;
+  }
+
+  .messages::-webkit-scrollbar { width: 4px; }
+  .messages::-webkit-scrollbar-track { background: transparent; }
+  .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── Message bubbles ── */
+  .msg {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: 88%;
+    animation: fadeUp 0.2s ease;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .msg.user { align-self: flex-end; align-items: flex-end; }
+  .msg.agent { align-self: flex-start; align-items: flex-start; }
+
+  .msg-label {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 0 4px;
+  }
+
+  .bubble {
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .msg.user .bubble {
+    background: var(--user-bg);
+    border: 1px solid var(--accent-dim);
+    color: var(--text);
+    border-bottom-right-radius: 3px;
+  }
+
+  .msg.agent .bubble {
+    background: var(--agent-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-bottom-left-radius: 3px;
+  }
+
+  /* ── Typing indicator ── */
+  .typing {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    padding: 14px 16px;
+    background: var(--agent-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    border-bottom-left-radius: 3px;
+    width: fit-content;
+  }
+
+  .typing span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    animation: bounce 1.2s infinite;
+  }
+
+  .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes bounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-5px); opacity: 1; }
+  }
+
+  /* ── Empty state ── */
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--muted);
+    text-align: center;
+    padding: 40px;
+    pointer-events: none;
+  }
+
+  .empty-state .icon {
+    font-size: 32px;
+    opacity: 0.4;
+    margin-bottom: 4px;
+  }
+
+  .empty-state p {
+    font-size: 14px;
+    max-width: 280px;
+  }
+
+  .empty-state .hint {
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--border);
+    margin-top: 4px;
+  }
+
+  /* ── Input area ── */
+  .input-area {
+    padding: 16px 24px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .input-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+
+  textarea {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 11px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: none;
+    outline: none;
+    min-height: 44px;
+    max-height: 140px;
+    line-height: 1.5;
+    transition: border-color 0.15s;
+    overflow-y: auto;
+  }
+
+  textarea:focus { border-color: var(--accent); }
+  textarea::placeholder { color: var(--muted); }
+
+  .send-btn {
+    background: var(--accent);
+    border: none;
+    color: #0d1117;
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: opacity 0.15s;
+  }
+
+  .send-btn:hover { opacity: 0.85; }
+  .send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .send-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .input-hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 8px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ── Error ── */
+  .error-bubble {
+    font-size: 12px;
+    color: var(--danger);
+    padding: 8px 12px;
+    border: 1px solid rgba(248,81,73,0.25);
+    border-radius: 6px;
+    background: rgba(248,81,73,0.05);
+    font-family: 'JetBrains Mono', monospace;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Header -->
+  <header>
+    <div class="header-left">
+      <div class="status-dot offline" id="statusDot"></div>
+      <h1>Calendar Agent</h1>
+      <span id="statusText">not connected</span>
+    </div>
+    <button class="config-btn" onclick="toggleConfig()">Configure</button>
+  </header>
+
+  <!-- Config panel -->
+  <div class="config-panel" id="configPanel">
+    <div class="config-row">
+      <span class="config-label">Webhook</span>
+      <input class="config-input" id="webhookUrl" type="text"
+        placeholder="https://your-n8n.com/webhook/calendar-agent" />
+    </div>
+    <div class="config-row">
+      <span class="config-label">User ID</span>
+      <input class="config-input" id="userId" type="text"
+        placeholder="your-name" />
+    </div>
+    <button class="config-save" onclick="saveConfig()">Save and connect</button>
+  </div>
+
+  <!-- Messages -->
+  <div class="messages" id="messages">
+    <div class="empty-state" id="emptyState">
+      <div class="icon">◈</div>
+      <p>Your calendar agent is ready. Configure the webhook to start.</p>
+      <div class="hint">Click "Configure" in the top right</div>
+    </div>
+  </div>
+
+  <!-- Input -->
+  <div class="input-area">
+    <div class="input-row">
+      <textarea
+        id="messageInput"
+        placeholder="Ask about your schedule, create events, or request a brief..."
+        rows="1"
+        onkeydown="handleKey(event)"
+        oninput="autoResize(this)"
+      ></textarea>
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        </svg>
+      </button>
+    </div>
+    <div class="input-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line</div>
+  </div>
+
+</div>
+
+<script>
+  // ── State ──
+  let webhookUrl = localStorage.getItem('cal_webhook') || '';
+  let userId     = localStorage.getItem('cal_userid')  || 'user';
+  let connected  = false;
+  let isWaiting  = false;
+
+  // ── Init ──
+  window.onload = () => {
+    if (webhookUrl) {
+      document.getElementById('webhookUrl').value = webhookUrl;
+      document.getElementById('userId').value = userId;
+      setConnected(true);
+    }
+  };
+
+  // ── Config ──
+  function toggleConfig() {
+    const panel = document.getElementById('configPanel');
+    panel.classList.toggle('open');
+  }
+
+  function saveConfig() {
+    const url = document.getElementById('webhookUrl').value.trim();
+    const uid = document.getElementById('userId').value.trim() || 'user';
+    if (!url) return;
+    webhookUrl = url;
+    userId = uid;
+    localStorage.setItem('cal_webhook', url);
+    localStorage.setItem('cal_userid', uid);
+    setConnected(true);
+    document.getElementById('configPanel').classList.remove('open');
+    clearEmpty();
+    appendAgentMessage('Connected. What would you like to know about your schedule?');
+  }
+
+  function setConnected(state) {
+    connected = state;
+    const dot  = document.getElementById('statusDot');
+    const text = document.getElementById('statusText');
+    const btn  = document.getElementById('sendBtn');
+    if (state) {
+      dot.classList.remove('offline');
+      text.textContent = 'connected';
+      btn.disabled = false;
+    } else {
+      dot.classList.add('offline');
+      text.textContent = 'not connected';
+      btn.disabled = true;
+    }
+  }
+
+  // ── Messages ──
+  function clearEmpty() {
+    const e = document.getElementById('emptyState');
+    if (e) e.remove();
+  }
+
+  function appendUserMessage(text) {
+    clearEmpty();
+    const container = document.getElementById('messages');
+    const msg = document.createElement('div');
+    msg.className = 'msg user';
+    msg.innerHTML = `
+      <div class="msg-label">You</div>
+      <div class="bubble">${escapeHtml(text)}</div>
+    `;
+    container.appendChild(msg);
+    scrollToBottom();
+  }
+
+  function appendAgentMessage(text) {
+    clearEmpty();
+    removeTyping();
+    const container = document.getElementById('messages');
+    const msg = document.createElement('div');
+    msg.className = 'msg agent';
+    msg.innerHTML = `
+      <div class="msg-label">Agent</div>
+      <div class="bubble">${escapeHtml(text)}</div>
+    `;
+    container.appendChild(msg);
+    scrollToBottom();
+  }
+
+  function appendError(text) {
+    removeTyping();
+    const container = document.getElementById('messages');
+    const msg = document.createElement('div');
+    msg.className = 'msg agent';
+    msg.innerHTML = `
+      <div class="msg-label">Agent</div>
+      <div class="error-bubble">${escapeHtml(text)}</div>
+    `;
+    container.appendChild(msg);
+    scrollToBottom();
+  }
+
+  function showTyping() {
+    removeTyping();
+    const container = document.getElementById('messages');
+    const wrap = document.createElement('div');
+    wrap.className = 'msg agent';
+    wrap.id = 'typingWrap';
+    wrap.innerHTML = `
+      <div class="msg-label">Agent</div>
+      <div class="typing">
+        <span></span><span></span><span></span>
+      </div>
+    `;
+    container.appendChild(wrap);
+    scrollToBottom();
+  }
+
+  function removeTyping() {
+    const t = document.getElementById('typingWrap');
+    if (t) t.remove();
+  }
+
+  function scrollToBottom() {
+    const c = document.getElementById('messages');
+    c.scrollTop = c.scrollHeight;
+  }
+
+  // ── Send ──
+  async function sendMessage() {
+    if (!connected || isWaiting) return;
+
+    const input = document.getElementById('messageInput');
+    const text  = input.value.trim();
+    if (!text) return;
+
+    input.value = '';
+    autoResize(input);
+    appendUserMessage(text);
+    showTyping();
+    isWaiting = true;
+    document.getElementById('sendBtn').disabled = true;
+
+    try {
+      const res = await fetch(webhookUrl, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ message: text, userId })
+      });
+
+      if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+
+      const data = await res.json();
+
+      // Handle different response shapes from n8n
+      const reply =
+        data.reply ||
+        data.aiResponse ||
+        data.message ||
+        data.response ||
+        (typeof data === 'string' ? data : null) ||
+        JSON.stringify(data);
+
+      appendAgentMessage(reply);
+
+    } catch (err) {
+      appendError(`Could not reach the agent. Check your webhook URL.\n${err.message}`);
+    } finally {
+      isWaiting = false;
+      if (connected) document.getElementById('sendBtn').disabled = false;
+      input.focus();
+    }
+  }
+
+  // ── Helpers ──
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+  }
+
+  function escapeHtml(str) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+</script>
+</body>
+</html>
